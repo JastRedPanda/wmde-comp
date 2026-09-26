@@ -1370,8 +1370,10 @@ impl Drop for MoveGrab {
             // with a client target) and keyboard focus (`Shell::set_focus`, which has no lock
             // check of its own), behind the lock screen. Skipping it leaves the window mapped
             // where the drag left it and simply unfocused: focus stays where the lock put it,
-            // and `Common::refresh_focus` keeps it there - `focus_target_is_valid` accepts
-            // nothing but a lock surface while `session_lock` is set.
+            // and `Common::refresh_focus` keeps it there - `focus_target_is_valid` accepts only
+            // lock surfaces while `session_lock` is set, besides layers marked through
+            // `cosmic-session-lock-layer-v1`, which no client can mark (`State::new` hides that
+            // global from every client).
             if !locked && let Some((mapped, position)) = position {
                 let serial = SERIAL_COUNTER.next_serial();
                 if !is_touch_grab {
