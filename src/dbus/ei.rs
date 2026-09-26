@@ -8,10 +8,12 @@ use zbus::names::{UniqueName, WellKnownName};
 
 use super::name_owners::NameOwners;
 
-static ALLOWED_NAMES: &[WellKnownName] = &[
-    WellKnownName::from_static_str_unchecked("org.freedesktop.impl.portal.desktop.wmde"),
-    WellKnownName::from_static_str_unchecked("fun.wmde.OSK"),
-];
+// WMDE: only the portal. Upstream also trusts the on-screen keyboard's bus name, but WMDE
+// ships no on-screen keyboard, and any session process could claim that name to get an input
+// emulation socket.
+static ALLOWED_NAMES: &[WellKnownName] = &[WellKnownName::from_static_str_unchecked(
+    "org.freedesktop.impl.portal.desktop.wmde",
+)];
 
 /// Channel for handing the EI socketpair (and requested device types)
 /// It's `None` until the EI sender side has been set up
