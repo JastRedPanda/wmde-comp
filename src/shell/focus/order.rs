@@ -22,7 +22,7 @@ use crate::{
         prelude::OutputExt,
         quirks::{WORKSPACE_OVERVIEW_NAMESPACE, workspace_overview_is_open},
     },
-    wayland::protocols::workspace::WorkspaceHandle,
+    wayland::protocols::{session_lock_layer::layer_show_on_lock, workspace::WorkspaceHandle},
 };
 
 pub enum Stage<'a> {
@@ -77,16 +77,107 @@ fn render_input_order_internal<R: 'static>(
     element_filter: ElementFilter,
     mut callback: impl FnMut(Stage) -> ControlFlow<Result<R, OutputNoMode>, ()>,
 ) -> ControlFlow<Result<R, OutputNoMode>, ()> {
+    // NOTE: Keep in sync with other surface iteration functions
+
     // Session Lock
-    // WMDE: the lock returns before any other stage; upstream emits `Stage::ZoomUI` ahead of it.
-    // Returning after a stage does not undo it: `backend::render::workspace_elements` collects
-    // the stages into a top-first element list, so the zoom overlay was drawn over the lock
-    // surface, and `State::surface_under` answers from the first stage that matches, so a click
-    // on that overlay reached it while locked - and its menu spawns `wmde-settings`
+    // WMDE: the lock branch runs before any other stage; upstream emits `Stage::ZoomUI` ahead
+    // of it. Returning after a stage does not undo it: `backend::render::workspace_elements`
+    // collects the stages into a top-first element list, so the zoom overlay was drawn over the
+    // lock surface, and `State::surface_under` answers from the first stage that matches, so a
+    // click on that overlay reached it while locked - and its menu spawns `wmde-settings`
     // (`shell::zoom`, `Item` "a11y-zoom-settings"). Nothing is emitted above this point, so a
-    // locked session yields the lock surface and nothing else, drawing and input alike.
+    // locked session yields only the lock surface and the layers marked through
+    // `cosmic-session-lock-layer-v1`, drawing and input alike. No client can mark a layer: the
+    // global is created with a filter that hides it from every client
+    // (`session_lock_layer_state` in `State::new`), so in practice the lock surface is all
+    // there is.
     if let Some(session_lock) = &shell.session_lock {
-        return callback(Stage::SessionLock(session_lock.surfaces.get(output)));
+        for (layer, popup, location) in layer_popups(output, Layer::Overlay, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerPopup {
+                layer,
+                popup: &popup,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        for (layer, location) in layer_surfaces(output, Layer::Overlay, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerSurface {
+                layer,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        for (layer, popup, location) in layer_popups(output, Layer::Top, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerPopup {
+                layer,
+                popup: &popup,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        for (layer, location) in layer_surfaces(output, Layer::Top, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerSurface {
+                layer,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        callback(Stage::SessionLock(session_lock.surfaces.get(output)))?;
+        for (layer, popup, location) in layer_popups(output, Layer::Bottom, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerPopup {
+                layer,
+                popup: &popup,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        for (layer, popup, location) in layer_popups(output, Layer::Background, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerPopup {
+                layer,
+                popup: &popup,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        for (layer, location) in layer_surfaces(output, Layer::Bottom, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerSurface {
+                layer,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        for (layer, location) in layer_surfaces(output, Layer::Background, element_filter) {
+            if !layer_show_on_lock(layer.wl_surface()) {
+                continue;
+            }
+            callback(Stage::LayerSurface {
+                layer,
+                location,
+                workspace_idx: current.1,
+            })?;
+        }
+        return ControlFlow::Continue(());
     }
 
     if shell

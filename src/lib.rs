@@ -305,7 +305,7 @@ Project home page: https://github.com/Lin-WMDE/wmde-comp
 Options:
   -h, --help          Show this message
   --no-xwayland       Run without Xwayland
-  -v, --version       Show the version of wmde-comp"#
+  -V, --version       Show the version of wmde-comp"#
     );
 }
 
