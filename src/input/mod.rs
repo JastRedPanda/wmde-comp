@@ -55,6 +55,7 @@ use smithay::{
     desktop::{WindowSurfaceType, utils::under_from_surface_tree},
     input::{
         Seat,
+        dnd::DnDGrab,
         keyboard::KeyboardHandle,
         keyboard::{FilterResult, KeyboardSource, KeysymHandle, ModifiersState},
         pointer::{
@@ -70,7 +71,10 @@ use smithay::{
     output::Output,
     reexports::{
         input::Device as InputDevice,
-        wayland_server::{Resource as _, protocol::wl_surface::WlSurface},
+        wayland_server::{
+            Resource as _,
+            protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
+        },
     },
     utils::{Clock, Logical, Monotonic, Point, Rectangle, SERIAL_COUNTER, Serial, Size},
     wayland::{
@@ -2400,10 +2404,20 @@ impl State {
         // Escape only cancels grabs the compositor started for its own interactions
         // For keyboard: SwapWindowGrab
         // For pointer: MoveGrab, ResizeGrab, and MenuGrab
+        // WMDE: and a Wayland drag-and-drop, which the compositor drives once the client asked
+        // for it, so Esc cancels dragging a file again as it did before upstream narrowed this
+        // list. The grab is keyed by its source type: `WlDataSource`, or the origin surface for
+        // a drag that has no source and stays inside one client (see `dnd_requested` in
+        // `wayland::handlers::data_device`). A drag started by an X11 client runs on smithay's
+        // private `XwmDndSource`, which cannot be named here, so Esc leaves that one alone.
         let keyboard_grabbed =
             keyboard.with_grab(|_serial, grab| grab.is::<SwapWindowGrab>()) == Some(true);
         let pointer_grabbed = pointer.with_grab(|_serial, grab| {
-            grab.is::<MoveGrab>() || grab.is::<ResizeGrab>() || grab.is::<MenuGrab>()
+            grab.is::<MoveGrab>()
+                || grab.is::<ResizeGrab>()
+                || grab.is::<MenuGrab>()
+                || grab.is::<DnDGrab<State, WlDataSource, PointerFocusTarget>>()
+                || grab.is::<DnDGrab<State, WlSurface, PointerFocusTarget>>()
         }) == Some(true);
         let is_grabbed = keyboard_grabbed || pointer_grabbed;
 
