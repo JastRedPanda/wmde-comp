@@ -765,8 +765,13 @@ impl State {
 
         let dbus_state = DBusState::init(&handle);
 
-        let session_lock_layer_state =
-            SessionLockLayerState::new::<State, _>(dh, client_not_sandboxed);
+        // WMDE: `cosmic-session-lock-layer-v1` is hidden from every client. Upstream lets any
+        // unsandboxed client mark a layer surface to stay visible and focusable under the lock,
+        // for the on-screen keyboard over the lock and the wallpaper under a transparent lock
+        // surface. Neither applies here: the on-screen keyboard is cut from the stack, and the
+        // locker draws its own background. With the global closed, `render_input_order` yields
+        // the lock surface alone, and no session process can put a surface over the lock.
+        let session_lock_layer_state = SessionLockLayerState::new::<State, _>(dh, |_| false);
 
         State {
             common: Common {
