@@ -764,13 +764,15 @@ where
 
     let shell = shell.read();
     // WMDE: what `render_input_order` yields is already safe under a session lock - it checks
-    // the lock as its first statement and yields `Stage::SessionLock` and nothing else
-    // (`shell::focus::order`). This covers what `cursor_elements` above put in this list without
-    // going through it: the drag-and-drop icon, the dragged window (with the snap layout strip on
-    // top of it) and the window menu, and the list is top-first, so those would draw over the
-    // lock surface. Fail secure: keep the cursor, which the locker needs, and drop every element
-    // that carries window content. The check runs under the same read guard `render_input_order`
-    // uses, so the two cannot disagree about the lock.
+    // the lock as its first statement and yields `Stage::SessionLock` plus the layer surfaces
+    // marked through `cosmic-session-lock-layer-v1`, and nothing else (`shell::focus::order`).
+    // No client can mark one: that global is hidden from every client (`State::new`). This
+    // covers what `cursor_elements` above put in this list without going through it: the
+    // drag-and-drop icon, the dragged window (with the snap layout strip on top of it) and the
+    // window menu, and the list is top-first, so those would draw over the lock surface. Fail
+    // secure: keep the cursor, which the locker needs, and drop every element that carries
+    // window content. The check runs under the same read guard `render_input_order` uses, so
+    // the two cannot disagree about the lock.
     //
     // One element stays outside this retain, knowingly: under `feature = "debug"` the fps overlay
     // is built in `output_elements` and prepended to what this function returns, so the retain

@@ -307,7 +307,9 @@ impl ImageCopyCaptureHandler for State {
 
                 // WMDE: output and workspace captures end up in `render_input_order`, which
                 // checks the lock as its first statement and then yields `Stage::SessionLock`
-                // and nothing else (`shell::focus::order`), so no window ever reaches their
+                // plus the layer surfaces marked through `cosmic-session-lock-layer-v1`, and
+                // nothing else (`shell::focus::order`); no client can mark one, that global is
+                // hidden from every client (`State::new`). So no window ever reaches their
                 // buffers. This path reads the surface tree directly and has to honour the lock
                 // itself - otherwise a capture session keeps handing out live contents of a
                 // window that sits hidden behind the locker.

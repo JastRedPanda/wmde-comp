@@ -51,11 +51,13 @@ pub fn lid_closed(common: &Common) -> Result<bool> {
 /// So the compositor listens for the same signal and, only when no lock is held, locks the
 /// session itself with no client attached. Everything needed for that already exists, and all
 /// of it keys off `shell.session_lock`: `render_input_order` then yields `Stage::SessionLock`
-/// and nothing else, so the output renders empty (`session_lock_elements` has no surface to
-/// draw) and `State::surface_under`, which walks the same order, has nothing to hand pointer
-/// input to; `update_focus_target` gives keyboard focus to a lock surface only, here to nothing
-/// at all, and `focus_target_is_valid` rejects any other target `Common::refresh_focus` finds
-/// still set; and `cancel_grabs` below drops the seat grabs, which sit in front of all of that.
+/// and, besides it, only layer surfaces marked through `cosmic-session-lock-layer-v1`, which no
+/// client can mark because that global is hidden from every client (`State::new`). So the
+/// output renders empty (`session_lock_elements` has no surface to draw) and
+/// `State::surface_under`, which walks the same order, has nothing to hand pointer input to;
+/// `update_focus_target` gives keyboard focus to a lock surface only, here to nothing at all,
+/// and `focus_target_is_valid` rejects any other target `Common::refresh_focus` finds still
+/// set; and `cancel_grabs` below drops the seat grabs, which sit in front of all of that.
 ///
 /// It is a blank screen and nothing more - there is no client, so there is nothing to type a
 /// password into. Getting back in means `loginctl unlock-session` from a VT. That is a poor

@@ -319,7 +319,10 @@ pub struct SessionLock {
     /// The client that holds the lock, or `None` when the compositor locked the session
     /// itself because logind asked for a lock and no client answered - see
     /// `crate::dbus::logind::session_lock_task`. A lock with no client draws nothing, which
-    /// renders as a blank output, and focus_target_is_valid() lets nothing take focus.
+    /// renders as a blank output, and focus_target_is_valid() lets nothing take focus: under a
+    /// lock it admits only lock surfaces and layers marked through
+    /// `cosmic-session-lock-layer-v1`, and no client can mark one (`State::new` hides that
+    /// global from every client).
     pub ext_session_lock: Option<ExtSessionLockV1>,
     pub surfaces: HashMap<Output, LockSurface>,
 }
