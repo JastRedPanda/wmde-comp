@@ -52,7 +52,7 @@ use smithay::{
         PointerAxisEvent, ProximityState, TabletToolButtonEvent, TabletToolEvent,
         TabletToolProximityEvent, TabletToolTipEvent, TabletToolTipState, TouchEvent,
     },
-    desktop::{WindowSurfaceType, utils::under_from_surface_tree},
+    desktop::{PopupKeyboardGrab, WindowSurfaceType, utils::under_from_surface_tree},
     input::{
         Seat,
         dnd::DnDGrab,
@@ -2410,8 +2410,13 @@ impl State {
         // a drag that has no source and stays inside one client (see `dnd_requested` in
         // `wayland::handlers::data_device`). A drag started by an X11 client runs on smithay's
         // private `XwmDndSource`, which cannot be named here, so Esc leaves that one alone.
-        let keyboard_grabbed =
-            keyboard.with_grab(|_serial, grab| grab.is::<SwapWindowGrab>()) == Some(true);
+        // WMDE: and the keyboard grab of an open popup, so Esc closes an applet's popup as it
+        // did in 1.8. Upstream dropped it from the list and left Esc to the client; libcosmic
+        // menus close themselves, but no applet overrides `on_escape`, and their popups stayed
+        // open.
+        let keyboard_grabbed = keyboard.with_grab(|_serial, grab| {
+            grab.is::<SwapWindowGrab>() || grab.is::<PopupKeyboardGrab<State>>()
+        }) == Some(true);
         let pointer_grabbed = pointer.with_grab(|_serial, grab| {
             grab.is::<MoveGrab>()
                 || grab.is::<ResizeGrab>()
