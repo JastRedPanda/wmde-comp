@@ -15,7 +15,7 @@ use cosmic::{
         widget::{self as iced_widget, Row, text::Style as TextStyle},
     },
     theme,
-    widget::{button, divider, icon::from_name, menu::menu_column::MenuColumn, space, text},
+    widget::{button, icon::from_name, menu, menu::menu_column::MenuColumn, space, text},
 };
 use smithay::{
     backend::{
@@ -306,13 +306,17 @@ impl Program for ContextMenu {
                             element.resize(min_size);
 
                             let output = seat.active_output();
+                            // Items sit inside the border and the menu padding; the submenu
+                            // opens past the padding, its first item level with this one
+                            let pad = menu::PADDING as i32;
+                            let inset = pad + 1;
                             let position = [
                                 // to the right -> down
                                 Rectangle::new(
                                     position
                                         + Point::from((
-                                            bounds.width.floor() as i32,
-                                            bounds.y.ceil() as i32,
+                                            (bounds.x + bounds.width).floor() as i32 + pad,
+                                            bounds.y.ceil() as i32 - inset,
                                         )),
                                     min_size.as_global(),
                                 ),
@@ -320,8 +324,10 @@ impl Program for ContextMenu {
                                 Rectangle::new(
                                     position
                                         + Point::from((
-                                            bounds.width.floor() as i32,
-                                            bounds.y.ceil() as i32 + bounds.height.ceil() as i32
+                                            (bounds.x + bounds.width).floor() as i32 + pad,
+                                            bounds.y.ceil() as i32
+                                                + bounds.height.ceil() as i32
+                                                + inset
                                                 - min_size.h,
                                         )),
                                     min_size.as_global(),
@@ -329,7 +335,10 @@ impl Program for ContextMenu {
                                 // to the left -> down
                                 Rectangle::new(
                                     position
-                                        + Point::from((-min_size.w + 1, bounds.y.ceil() as i32)),
+                                        + Point::from((
+                                            -min_size.w + 1,
+                                            bounds.y.ceil() as i32 - inset,
+                                        )),
                                     min_size.as_global(),
                                 ),
                                 // to the left -> up
@@ -337,7 +346,9 @@ impl Program for ContextMenu {
                                     position
                                         + Point::from((
                                             -min_size.w + 1,
-                                            bounds.y.ceil() as i32 + bounds.height.ceil() as i32
+                                            bounds.y.ceil() as i32
+                                                + bounds.height.ceil() as i32
+                                                + inset
                                                 - min_size.h,
                                         )),
                                     min_size.as_global(),
@@ -405,21 +416,20 @@ impl Program for ContextMenu {
 
         MenuColumn::with_children(self.items.iter().enumerate().map(|(idx, item)| {
             match item {
-                Item::Separator => divider::horizontal::light()
-                    .class(theme::Rule::Default)
-                    .into(),
+                Item::Separator => menu::divider(),
                 Item::Submenu { title, .. } => Row::with_children(vec![
-                    space::horizontal().width(16).into(),
+                    menu::icon_column(None),
                     text::body(title).width(mode).into(),
-                    from_name("go-next-symbolic")
-                        .size(16)
+                    space::horizontal().width(16).into(),
+                    from_name("pan-end-symbolic")
+                        .size(menu::ARROW_SIZE)
                         .prefer_svg(true)
                         .icon()
                         .into(),
                 ])
-                .spacing(8)
                 .width(width)
-                .padding([8, 16])
+                .height(menu::ITEM_HEIGHT)
+                .padding([0, menu::ITEM_PADDING])
                 .align_y(Alignment::Center)
                 .apply(|row| item::SubmenuItem::new(row, idx))
                 .style(theme::Button::MenuItem)
@@ -432,18 +442,16 @@ impl Program for ContextMenu {
                     ..
                 } => {
                     let mut components = vec![
-                        if *toggled {
+                        menu::icon_column(toggled.then(|| {
                             from_name("object-select-symbolic")
-                                .size(16)
+                                .size(menu::ICON_SIZE)
                                 .prefer_svg(true)
                                 .icon()
                                 .class(theme::Svg::custom(|theme| iced_widget::svg::Style {
                                     color: Some(theme.cosmic().accent.base.into()),
                                 }))
                                 .into()
-                        } else {
-                            space::horizontal().width(16).into()
-                        },
+                        })),
                         text::body(title)
                             .width(mode)
                             .class(if *disabled {
@@ -479,12 +487,12 @@ impl Program for ContextMenu {
                     }
 
                     Row::with_children(components)
-                        .spacing(8)
                         .width(mode)
                         .align_y(Alignment::Center)
                         .apply(button::custom)
                         .width(width)
-                        .padding([8, 16])
+                        .height(menu::ITEM_HEIGHT)
+                        .padding([0, menu::ITEM_PADDING])
                         .on_press_maybe((!disabled).then_some(Message::ItemPressed(idx)))
                         .class(theme::Button::MenuItem)
                         .into()
@@ -493,7 +501,8 @@ impl Program for ContextMenu {
         }))
         .width(Length::Shrink)
         .apply(iced_widget::container)
-        .padding(1)
+        // 1 px border plus the menu padding
+        .padding(1.0 + menu::PADDING)
         .class(theme::Container::custom(|theme| {
             let cosmic = theme.cosmic();
             let component = &cosmic.background(cosmic.frosted_windows).component;
