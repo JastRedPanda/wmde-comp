@@ -95,9 +95,7 @@ impl MenuGrabState {
                     .to_physical_precise_round(scale),
                 scale.into(),
                 1.0,
-                elem.iced
-                    .with_theme(|theme| theme.cosmic().radius_s())
-                    .map(|x| x.round() as u8),
+                [menu::RADIUS.round() as u8; 4],
                 push,
                 None,
             )
@@ -512,7 +510,7 @@ impl Program for ContextMenu {
                 text_color: Some(component.on.into()),
                 background: Some(Background::Color(component.base.into())),
                 border: Border {
-                    radius: cosmic.radius_s().into(),
+                    radius: menu::RADIUS.into(),
                     width: 1.0,
                     color: component.divider.into(),
                 },
