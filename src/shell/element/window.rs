@@ -897,16 +897,19 @@ impl Decorations<CosmicWindowInternal, Message> for DefaultDecorations {
             .on_drag(Message::DragStart)
             .on_close(Message::Close)
             .focused(win.window.is_activated(false))
-            .on_double_click(Message::Maximize)
             .on_right_click(Message::Menu)
             .is_ssd(true)
             .sharp_corners(sharp_corners);
 
-        if cosmic::config::show_minimize() {
-            header = header.on_minimize(Message::Minimize)
-        }
-        if cosmic::config::show_maximize() {
-            header = header.on_maximize(Message::Maximize)
+        // WMDE: one of the stack's title bars, never a mix. A window the layout treats as a
+        // dialog (a fixed size, an xdg parent, a modal or non-normal X11 type) gets the dialog
+        // one - title and close; every other window the normal one, with all three buttons.
+        // The global show_minimize / show_maximize settings are not consulted.
+        if !crate::shell::layout::is_dialog(&win.window) {
+            header = header
+                .on_double_click(Message::Maximize)
+                .on_minimize(Message::Minimize)
+                .on_maximize(Message::Maximize);
         }
 
         header.into()
