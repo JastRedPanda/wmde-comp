@@ -486,6 +486,8 @@ impl Program for ContextMenu {
 
                     Row::with_children(components)
                         .width(mode)
+                        // Fill the item height, otherwise the label sticks to its top
+                        .height(Length::Fill)
                         .align_y(Alignment::Center)
                         .apply(button::custom)
                         .width(width)
