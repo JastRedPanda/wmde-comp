@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use crate::{
-    backend::render::{ElementFilter, cursor::notify_cursor_activity},
+    backend::render::{
+        ElementFilter,
+        cursor::{PointerEventKind, notify_cursor_activity},
+    },
     config::{
         Action, Config, PrivateAction,
         key_bindings::{
@@ -227,7 +230,16 @@ impl State {
     ) where
         <B as InputBackend>::Device: 'static,
     {
-        crate::wayland::handlers::output_power::set_all_surfaces_dpms_on(self);
+        // An input device going away is not user activity, e.g. a wireless keyboard
+        // dropping its link when it sleeps, so it must not power displays back on.
+        // Device additions still wake: after a system resume the re-enumerated
+        // devices may be the only input seen, and the wake resets idle anyway.
+        if !matches!(
+            &event,
+            InputEvent::DeviceRemoved { .. } | InputEvent::Special(_)
+        ) {
+            crate::wayland::handlers::output_power::set_all_surfaces_dpms_on(self);
+        }
 
         use smithay::backend::input::Event;
         match event {
@@ -334,6 +346,26 @@ impl State {
                                 keyboard.modifier_state().num_lock;
                         }
                     }
+
+                    // A bare modifier press changes the modifier state; a real
+                    // keystroke does not. Super+drag moves windows, so hiding on
+                    // Super-down would take the cursor away exactly as the user
+                    // reaches for it. Super+1 still counts as typing.
+                    let bare_modifier = previous_modifiers != keyboard.modifier_state();
+                    if self.common.config.cosmic_conf.cursor_hide.while_typing
+                        && state == KeyState::Pressed
+                        && !bare_modifier
+                    {
+                        crate::backend::render::cursor::hide_cursor_now(
+                            self,
+                            &seat,
+                            crate::backend::render::cursor::HideReason::Typing,
+                        );
+                    } else {
+                        // Still refresh: this is how entering fullscreen by
+                        // keyboard arms the fullscreen timeout.
+                        crate::backend::render::cursor::refresh_idle_timer(self, &seat);
+                    }
                 }
             }
 
@@ -347,7 +379,7 @@ impl State {
                     .cloned()
                 {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Motion);
                     let current_output = seat.active_output();
 
                     if self.common.config.cosmic_conf.cursor_shake_to_find
@@ -725,7 +757,7 @@ impl State {
                     .cloned();
                 if let Some(seat) = maybe_seat {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Motion);
                     let (output, position) = if matches!(&backend_id, InputBackendId::Ei(_)) {
                         // EI absolute coordinates are in the compositor's *global*
                         // logical space: each advertised region carries its output's
@@ -820,7 +852,7 @@ impl State {
                     return;
                 };
                 self.common.idle_notifier_state.notify_activity(&seat);
-                notify_cursor_activity(self, &seat);
+                notify_cursor_activity(self, &seat, PointerEventKind::Other);
 
                 let current_focus = seat.get_keyboard().unwrap().current_focus();
                 let shortcuts_inhibited = current_focus.as_ref().is_some_and(|f| {
@@ -1098,7 +1130,7 @@ impl State {
                     .cloned();
                 if let Some(seat) = maybe_seat {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Other);
 
                     if self.source_modifiers(&backend_id, &seat).logo
                         && self
@@ -1500,11 +1532,18 @@ impl State {
                     };
                     let under = State::surface_under(position, &output, &shell)
                         .map(|(target, pos)| (target, pos.as_logical()));
+                    let focus_target = State::element_under(position, &output, &shell, &seat);
 
                     std::mem::drop(shell);
 
                     let serial = SERIAL_COUNTER.next_serial();
                     let touch = seat.get_touch().unwrap();
+                    // change the keyboard focus unless the touch is grabbed, like pointer buttons
+                    if !touch.is_grabbed()
+                        && let Some(target) = focus_target.as_ref()
+                    {
+                        Shell::set_focus(self, Some(target), &seat, Some(serial), false);
+                    }
                     touch.down(
                         self,
                         under,
@@ -1515,6 +1554,14 @@ impl State {
                             time: event.time(),
                         },
                     );
+
+                    if self.common.config.cosmic_conf.cursor_hide.after_touch {
+                        crate::backend::render::cursor::hide_cursor_now(
+                            self,
+                            &seat,
+                            crate::backend::render::cursor::HideReason::Touch,
+                        );
+                    }
                 }
             }
             InputEvent::TouchMotion { event, .. } => {
@@ -1630,7 +1677,7 @@ impl State {
                     .cloned()
                 {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Motion);
                     let Some(output) =
                         mapped_output_for_device(&self.common.config, &shell, &event.device())
                             .cloned()
@@ -1734,7 +1781,7 @@ impl State {
                     .cloned()
                 {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Motion);
                     let Some(output) =
                         mapped_output_for_device(&self.common.config, &shell, &event.device())
                             .cloned()
@@ -1883,7 +1930,7 @@ impl State {
                     .cloned();
                 if let Some(seat) = maybe_seat {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Other);
 
                     let serial = SERIAL_COUNTER.next_serial();
                     let output = seat.active_output();
@@ -1936,7 +1983,7 @@ impl State {
                     .cloned();
                 if let Some(seat) = maybe_seat {
                     self.common.idle_notifier_state.notify_activity(&seat);
-                    notify_cursor_activity(self, &seat);
+                    notify_cursor_activity(self, &seat, PointerEventKind::Other);
                     if let Some(tool) = seat.tablet_seat().get_tool(&event.tool()) {
                         tool.button(
                             self,

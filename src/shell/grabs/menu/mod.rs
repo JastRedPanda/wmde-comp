@@ -541,6 +541,29 @@ pub struct MenuGrab {
     last_tablet_idx: Option<usize>,
 }
 
+impl MenuGrab {
+    // WMDE: whether a pointer location lies inside any menu element, mapped through the same
+    // zoom transform `PointerGrab::motion` applies.
+    fn pointer_over_menu(&self, state: &State, location: Point<f64, Logical>) -> bool {
+        let location = if let Some(output) = self.screen_space_relative.as_ref()
+            && state.common.shell.read().zoom_state().is_some()
+        {
+            location
+                .as_global()
+                .to_zoomed(output)
+                .to_global(output)
+                .as_logical()
+        } else {
+            location
+        };
+        self.elements.lock().unwrap().iter().any(|elem| {
+            let mut bbox = elem.iced.bbox();
+            bbox.loc = elem.position.as_logical();
+            bbox.contains(location.to_i32_floor())
+        })
+    }
+}
+
 impl PointerGrab<State> for MenuGrab {
     fn motion(
         &mut self,
@@ -587,20 +610,12 @@ impl PointerGrab<State> for MenuGrab {
                     PointerTarget::motion(&element.iced, &self.seat, state, &new_event);
                 }
             } else {
-                // WMDE: leave *every* entered element, upstream skips the first one. The pointer
-                // is outside all of them here, so anything left entered keeps `button` forwarding
-                // clicks into an iced element whose cursor still sits on the item it last hovered
-                // - a click next to the menu would fire that item instead of dismissing the menu.
-                // An open submenu survives this: the branch above only touches the element under
-                // the pointer, so a parent stays entered while the pointer is over its submenu,
-                // and leaving pops nothing - `PointerTarget::leave` for an `IcedElement` only
-                // queues `CursorLeft` and keeps the cached cursor position, so the parent's
-                // `item::SubmenuItem` still reads as hovered and publishes no `ItemLeft`. What
-                // does pop a submenu is an `ItemLeft` from a later motion onto another row of the
-                // parent, or the whole stack going away when the grab is dropped.
+                // Keep the root menu hovered while a submenu is open
+                let keep_root = usize::from(elements.len() > 1);
                 elements
                     .iter_mut()
                     .filter(|element| element.pointer_entered)
+                    .skip(keep_root)
                     .for_each(|element| {
                         PointerTarget::leave(
                             &element.iced,
@@ -633,6 +648,17 @@ impl PointerGrab<State> for MenuGrab {
         handle: &mut PointerInnerHandle<'_, State>,
         event: &PointerButtonEvent,
     ) {
+        // WMDE (2a62f516): a press outside every menu element dismisses the menu and fires
+        // nothing. `pointer_entered` alone does not guarantee that: while a submenu is open
+        // `motion` keeps the root entered, and a quick move from the submenu row onto an entry
+        // and out of the menu, before the idle submenu pop runs, leaves the root entered with
+        // its cursor on that entry - forwarding the press would then run it.
+        if event.state == ButtonState::Pressed
+            && !self.pointer_over_menu(state, handle.current_location())
+        {
+            handle.unset_grab(self, state, event.serial, event.time, true);
+            return;
+        }
         let any_entered = self
             .elements
             .lock()
@@ -1038,10 +1064,11 @@ impl TabletToolGrab<State> for MenuGrab {
                 );
                 self.last_tablet_idx = Some(i);
             } else {
+                let keep_root = usize::from(elements.len() > 1);
                 elements
                     .iter_mut()
                     .filter(|element| element.tablet_entered.is_some())
-                    .skip(1)
+                    .skip(keep_root)
                     .for_each(|element| {
                         TabletToolTarget::proximity_out(
                             &element.iced,
