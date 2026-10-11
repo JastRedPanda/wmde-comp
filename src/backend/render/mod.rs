@@ -778,7 +778,7 @@ where
     // is built in `output_elements` and prepended to what this function returns, so the retain
     // never sees it. It is left alone - it draws frame timings and focus labels, never window
     // contents, and `debug` is not a default feature, so no shipped binary carries it (the
-    // package builds through plain `make`, i.e. `cargo build --release`).
+    // package builds through `just build-release`, i.e. `cargo build --release` with no features).
     //
     // This is the second line of defence and not the whole of it. Suppressing the picture of a
     // grab that is still running would only make it invisible, so the grabs themselves are

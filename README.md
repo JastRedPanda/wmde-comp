@@ -1,5 +1,5 @@
-# cosmic-comp
-Compositor for the COSMIC desktop environment
+# wmde-comp
+Compositor for the WMDE desktop environment
 
 ## Development
 
@@ -17,10 +17,8 @@ This project uses [just](https://github.com/casey/just) as a command runner.
 - `just check` - Run clippy linter with pedantic warnings
 
 #### Installation
-- `just install` - Install binary and configuration files
-- `just install-bare-session` - Install with bare session files (wayland session, systemd units)
+- `just install` - Install the binary, the default schemas and the user unit (the session files come from wmde-session)
 - `just uninstall` - Remove installed files
-- `just uninstall-bare-session` - Remove installed files including bare session files
 
 #### Cleanup
 - `just clean` - Run `cargo clean`
