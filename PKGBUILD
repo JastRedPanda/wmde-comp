@@ -18,7 +18,7 @@ license=('GPL-3.0-only')
 depends=('glibc' 'gcc-libs' 'wayland' 'libinput' 'libxkbcommon' 'libglvnd'
          'mesa' 'seatd' 'systemd-libs' 'libdisplay-info' 'pixman' 'fontconfig'
          'freetype2' 'expat')
-makedepends=('rust' 'cargo' 'git' 'make' 'clang' 'lld' 'pkgconf' 'wayland-protocols')
+makedepends=('rust' 'cargo' 'git' 'just' 'clang' 'lld' 'pkgconf' 'wayland-protocols')
 optdepends=('xorg-xwayland: X11 application support'
             'wmde-session: full WMDE session wiring')
 # NOTE: Cargo.toml uses path deps to sibling checkouts (../libcosmic,
@@ -43,7 +43,7 @@ build() {
   cd "$srcdir/$pkgname"
   # x86-64-v3 (AVX2/BMI2) baseline for the WMDE repo; runs on Haswell+ (and the VM).
   export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C target-cpu=x86-64-v3"
-  make
+  just build-release
 }
 
 package() {
@@ -51,6 +51,6 @@ package() {
   # installs /usr/bin/wmde-comp, /usr/lib/systemd/user/wmde-comp.service and the default
   # schemas under /usr/share/wmde/fun.wmde.Settings.{Shortcuts,WindowRules}/v1/ .
   # NO install-bare-session target - wmde-session is the sole owner of the session files.
-  make DESTDIR="$pkgdir" prefix=/usr install
+  just rootdir="$pkgdir" prefix=/usr install
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
