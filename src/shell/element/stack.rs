@@ -730,7 +730,6 @@ impl CosmicStack {
                 theme
                     .cosmic()
                     .radius_s()
-                    .map(|x| if x < 4.0 { x } else { x + 2.0 })
                     .map(|x| (x * scale as f32).round() as u8)
             } else {
                 [0, 0, 0, 0]
@@ -816,11 +815,7 @@ impl CosmicStack {
                 if tiled {
                     [0; 4]
                 } else {
-                    theme
-                        .cosmic()
-                        .radius_s()
-                        .map(|x| if x < 4.0 { x } else { x + 2.0 })
-                        .map(|x| x.round() as u8)
+                    theme.cosmic().radius_s().map(|x| x.round() as u8)
                 }
             })
         });
@@ -1037,7 +1032,6 @@ impl CosmicStack {
                 .unwrap()
                 .cosmic()
                 .radius_s()
-                .map(|x| if x < 4.0 { x } else { x + 2.0 })
                 .map(|val| val.round() as u8);
 
             if !round {
@@ -1405,13 +1399,7 @@ impl Decorations<CosmicStackInternal, Message> for DefaultDecorations {
         let radius = if windows[active].is_maximized(false) || stack.tiled.load(Ordering::Acquire) {
             Radius::from(0.0)
         } else {
-            let radii = stack
-                .theme
-                .lock()
-                .unwrap()
-                .cosmic()
-                .radius_s()
-                .map(|x| if x < 4.0 { x } else { x + 2.0 });
+            let radii = stack.theme.lock().unwrap().cosmic().radius_s();
             Radius::from([radii[0], radii[1], 0., 0.])
         };
         let group_focused = stack.group_focused.load(Ordering::SeqCst);
