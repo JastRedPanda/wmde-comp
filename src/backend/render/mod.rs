@@ -126,7 +126,7 @@ impl AsMut<GlowRenderer> for RendererRef<'_> {
     }
 }
 
-pub static CLEAR_COLOR: Color32F = Color32F::new(0.153, 0.161, 0.165, 1.0);
+pub static CLEAR_COLOR: Color32F = Color32F::new(1.0, 0.0, 0.0, 1.0);
 pub static OUTLINE_SHADER: &str = include_str!("./shaders/rounded_outline.frag");
 pub static RECTANGLE_SHADER: &str = include_str!("./shaders/rounded_rectangle.frag");
 pub static POSTPROCESS_SHADER: &str = include_str!("./shaders/offscreen.frag");
