@@ -137,6 +137,11 @@ pub struct SurfaceThreadState {
     vrr_mode: AdaptiveSync,
     frame_flags: FrameFlags,
     compositor: Option<GbmDrmOutput>,
+    // WMDE: the output taken out of service by a suspend, kept alive until the session comes
+    // back. Dropping it while the device is still ours clears the CRTC and frees the scanned
+    // out framebuffer, so a VT switch blanked the screen; kept, the last frame stays up until
+    // whoever owns the screen next replaces it.
+    suspended: Option<GbmDrmOutput>,
 
     state: QueueState,
     timings: Timings,
@@ -199,6 +204,8 @@ pub enum QueueState {
 #[derive(Debug)]
 pub enum ThreadCommand {
     Suspend(SyncSender<()>),
+    /// WMDE: drop the output kept across a suspend, see `SurfaceThreadState::suspended`.
+    ReleaseSuspended(SyncSender<()>),
     Resume {
         compositor: GbmDrmOutput,
     },
@@ -430,6 +437,16 @@ impl Surface {
         let _ = rx.recv();
     }
 
+    /// WMDE: drops the output kept by `suspend`. Call while the device is still paused, so
+    /// the drop does not touch the display state.
+    pub fn release_suspended(&mut self) {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let _ = self
+            .thread_command
+            .send(ThreadCommand::ReleaseSuspended(tx));
+        let _ = rx.recv();
+    }
+
     pub fn resume(
         &mut self,
         compositor: GbmDrmOutput,
@@ -534,6 +551,7 @@ fn surface_thread(
         target_node,
         active,
         compositor: None,
+        suspended: None,
         frame_flags: FrameFlags::DEFAULT,
         vrr_mode: AdaptiveSync::Disabled,
 
@@ -566,6 +584,10 @@ fn surface_thread(
         .handle()
         .insert_source(thread_receiver, move |command, _, state| match command {
             Event::Msg(ThreadCommand::Suspend(tx)) => state.suspend(tx),
+            Event::Msg(ThreadCommand::ReleaseSuspended(tx)) => {
+                state.suspended.take();
+                let _ = tx.send(());
+            }
             Event::Msg(ThreadCommand::Resume { compositor }) => {
                 state.resume(compositor);
             }
@@ -668,7 +690,7 @@ fn surface_thread(
 impl SurfaceThreadState {
     fn suspend(&mut self, tx: SyncSender<()>) {
         self.active.store(false, Ordering::SeqCst);
-        let _ = self.compositor.take();
+        self.suspended = self.compositor.take();
 
         match std::mem::replace(&mut self.state, QueueState::Idle) {
             QueueState::Idle => {}

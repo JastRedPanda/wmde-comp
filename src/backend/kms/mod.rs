@@ -376,6 +376,14 @@ impl State {
     ) {
         let backend = self.backend.kms();
 
+        // WMDE: let go of the outputs kept across the suspend before the device is ours again
+        // (`Surface::release_suspended`).
+        for device in backend.drm_devices.values_mut() {
+            for surface in device.inner.surfaces.values_mut() {
+                surface.release_suspended();
+            }
+        }
+
         // recreate all graphics contexts
         backend
             .clear_used_devices()
