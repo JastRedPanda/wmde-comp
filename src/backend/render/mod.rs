@@ -31,7 +31,7 @@ use crate::{
         WorkspaceRenderElement,
         element::CosmicMappedKey,
         focus::{FocusTarget, Stage, render_input_order, target::WindowGroup},
-        grabs::{SeatMenuGrabState, SeatMoveGrabState},
+        grabs::{MoveGrabPart, SeatMenuGrabState, SeatMoveGrabState},
         layout::tiling::ANIMATION_DURATION,
         zoom::ZoomState,
     },
@@ -488,6 +488,9 @@ pub fn cursor_elements<'a, 'frame, R>(
     exclude_dnd_icon: bool,
     scanout_node: Option<DrmNode>,
     push: &mut dyn FnMut(CosmicElement<R>),
+    // WMDE: where a dragged window that is not sticky goes, so the caller can draw it under
+    // the sticky layer. `None` draws it on top, with the cursor, as upstream does.
+    mut push_grab_window: Option<&mut dyn FnMut(CosmicElement<R>)>,
 ) where
     R: AsGlowRenderer,
     R::TextureId: Send + Clone + 'static,
@@ -570,16 +573,36 @@ pub fn cursor_elements<'a, 'frame, R>(
             .unwrap()
             .as_ref()
         {
-            grab_state.render(renderer, output, theme, scanout_node, &mut |elem| {
-                push(CosmicElement::MoveGrab(RescaleRenderElement::from_element(
+            let rescale = |elem| {
+                CosmicElement::MoveGrab(RescaleRenderElement::from_element(
                     elem,
                     focal_point
                         .as_logical()
                         .to_physical(output.current_scale().fractional_scale())
                         .to_i32_round(),
                     zoom_scale,
-                )));
-            })
+                ))
+            };
+            grab_state.render(
+                renderer,
+                output,
+                theme,
+                scanout_node,
+                MoveGrabPart::Overlays,
+                &mut |elem| push(rescale(elem)),
+            );
+            let window_push: &mut dyn FnMut(CosmicElement<R>) = match push_grab_window.as_mut() {
+                Some(below_sticky) if !grab_state.is_sticky() => &mut **below_sticky,
+                _ => &mut *push,
+            };
+            grab_state.render(
+                renderer,
+                output,
+                theme,
+                scanout_node,
+                MoveGrabPart::Window,
+                &mut |elem| window_push(rescale(elem)),
+            );
         }
 
         if let Some(grab_state) = seat
@@ -735,6 +758,10 @@ where
     WorkspaceRenderElement<R>: RenderElement<R>,
 {
     let mut elements = Vec::<CosmicElement<R>>::new();
+    // WMDE: the dragged window, unless sticky, collected apart from the cursor and inserted
+    // under the sticky layer at `Stage::Sticky`. Without that stage (the workspace overview
+    // shows layer shell only) it stays on top with the cursor.
+    let mut grab_window_elements = Vec::<CosmicElement<R>>::new();
 
     let shell_ref = shell.read();
     let seats = shell_ref.seats.iter().cloned().collect::<Vec<_>>();
@@ -748,6 +775,7 @@ where
     // that is prone to deadlock with the main-thread on some grabs.
     std::mem::drop(shell_ref);
 
+    let mut push_grab_window = |elem| grab_window_elements.push(elem);
     cursor_elements(
         renderer,
         seats.iter(),
@@ -760,6 +788,11 @@ where
         element_filter == ElementFilter::ExcludeWorkspaceOverview,
         scanout_node,
         &mut |elem| elements.push(elem),
+        if element_filter != ElementFilter::LayerShellOnly {
+            Some(&mut push_grab_window)
+        } else {
+            None
+        },
     );
 
     let shell = shell.read();
@@ -772,7 +805,9 @@ where
     // window menu, and the list is top-first, so those would draw over the lock surface. Fail
     // secure: keep the cursor, which the locker needs, and drop every element that carries
     // window content. The check runs under the same read guard `render_input_order` uses, so
-    // the two cannot disagree about the lock.
+    // the two cannot disagree about the lock. A dragged window held back in
+    // `grab_window_elements` is never inserted under a lock: only `Stage::Sticky` inserts it,
+    // and a locked session yields no such stage.
     //
     // One element stays outside this retain, knowingly: under `feature = "debug"` the fps overlay
     // is built in `output_elements` and prepended to what this function returns, so the retain
@@ -1052,6 +1087,9 @@ where
                         }
                     },
                 );
+                // WMDE: the list is top-first, so this puts the dragged window right under
+                // the sticky windows and over every other window.
+                elements.append(&mut grab_window_elements);
             }
             Stage::WorkspacePopups { workspace, offset } => {
                 workspace.render_popups(

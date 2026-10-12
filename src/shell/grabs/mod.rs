@@ -119,7 +119,7 @@ mod menu;
 pub use self::menu::*;
 mod moving;
 // WMDE: SeatMovePendingState is ours, see moving.rs
-pub use self::moving::{SeatMoveGrabState, SeatMovePendingState};
+pub use self::moving::{MoveGrabPart, SeatMoveGrabState, SeatMovePendingState};
 mod delay;
 
 bitflags::bitflags! {

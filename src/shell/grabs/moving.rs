@@ -110,6 +110,17 @@ impl SeatMovePendingState {
 
 const RESCALE_ANIMATION_DURATION: f64 = 150.0;
 
+/// WMDE: which half of a move grab `MoveGrabState::render` draws. The dragged window is drawn
+/// in the window stack, under the sticky layer, unless it is sticky itself; the strip and the
+/// stacking indicator are pointer feedback and stay on top of everything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveGrabPart {
+    /// The layout strip and the stacking indicator.
+    Overlays,
+    /// The window with its popups, focus indicator and shadow, and the snap preview under it.
+    Window,
+}
+
 pub struct MoveGrabState {
     window: CosmicMapped,
     window_offset: Point<i32, Logical>,
@@ -134,6 +145,7 @@ impl MoveGrabState {
         output: &Output,
         theme: &CosmicTheme,
         scanout_node: Option<DrmNode>,
+        part: MoveGrabPart,
         push: &mut dyn FnMut(CosmicMappedRenderElement<R>),
     ) where
         R: AsGlowRenderer + ImportAll + ImportMem,
@@ -173,28 +185,32 @@ impl MoveGrabState {
             + self.window_offset
             - scaling_offset;
 
-        // WMDE: the layout strip sits above the dragged window, like the Windows 11 flyout.
-        if let Some(strip) = self.snap_strip.as_ref()
-            && &self.cursor_output == output
-        {
-            strip.push_render_elements(
-                renderer,
-                strip.geometry().loc.to_physical_precise_round(output_scale),
-                output_scale,
-                1.0,
-                &mut |elem| push(elem.into()),
-            );
-        }
+        if part == MoveGrabPart::Overlays {
+            // WMDE: the layout strip sits above the dragged window, like the Windows 11 flyout.
+            if let Some(strip) = self.snap_strip.as_ref()
+                && &self.cursor_output == output
+            {
+                strip.push_render_elements(
+                    renderer,
+                    strip.geometry().loc.to_physical_precise_round(output_scale),
+                    output_scale,
+                    1.0,
+                    &mut |elem| push(elem.into()),
+                );
+            }
 
-        for (indicator, location) in self.stacking_indicator.iter() {
-            indicator.push_render_elements(
-                renderer,
-                location.to_physical_precise_round(output_scale),
-                output_scale,
-                1.0,
-                &mut |elem| push(elem.into()),
-                None,
-            );
+            for (indicator, location) in self.stacking_indicator.iter() {
+                indicator.push_render_elements(
+                    renderer,
+                    location.to_physical_precise_round(output_scale),
+                    output_scale,
+                    1.0,
+                    &mut |elem| push(elem.into()),
+                    None,
+                );
+            }
+
+            return;
         }
 
         self.window.push_popup_render_elements::<R>(
@@ -345,6 +361,12 @@ impl MoveGrabState {
                 .into(),
             )
         }
+    }
+
+    /// WMDE: a sticky window keeps being drawn on top while dragged; any other goes under the
+    /// sticky layer, as it is when not dragged.
+    pub fn is_sticky(&self) -> bool {
+        self.previous == ManagedLayer::Sticky
     }
 
     pub fn element(&self) -> CosmicMapped {
