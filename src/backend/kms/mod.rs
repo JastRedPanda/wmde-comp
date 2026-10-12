@@ -93,6 +93,7 @@ pub struct KmsState {
 /// the frame stays up until whoever owns the screen next replaces it. Done on every clean
 /// exit, not only while paused: greetd's SIGTERM arrives ~70 ms after the VT switch, before
 /// the pause from logind has been dispatched, so the session still reads as active here.
+/// `resume_session` uses it too, before dropping the output kept across a suspend.
 /// Planes showing someone else's framebuffer are left alone: the kernel refuses to close
 /// what this fd does not own.
 pub fn close_scanout_framebuffers(kms: &KmsState) {
@@ -443,7 +444,10 @@ impl State {
         let backend = self.backend.kms();
 
         // WMDE: let go of the outputs kept across the suspend before the device is ours again
-        // (`Surface::release_suspended`).
+        // (`Surface::release_suspended`). Their framebuffers are closed first: dropped, the
+        // one still on screen would be removed, and the screen went black for ~180 ms until
+        // the first new frame.
+        close_scanout_framebuffers(backend);
         for device in backend.drm_devices.values_mut() {
             for surface in device.inner.surfaces.values_mut() {
                 surface.release_suspended();
