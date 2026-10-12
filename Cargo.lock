@@ -6772,6 +6772,7 @@ dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
  "id_tree",
+ "image",
  "indexmap 2.14.2",
  "jiff",
  "keyframe",

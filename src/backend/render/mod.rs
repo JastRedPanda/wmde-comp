@@ -91,6 +91,7 @@ pub mod animations;
 pub mod cursor;
 pub mod element;
 pub mod shadow;
+pub mod startup_backdrop;
 pub mod wayland;
 use self::element::{AsGlowRenderer, CosmicElement};
 
@@ -1169,6 +1170,14 @@ where
 
         ControlFlow::Continue(())
     })?;
+
+    // WMDE: the greeter's picture under everything until the wallpaper is there, instead of
+    // `CLEAR_COLOR` (`startup_backdrop`). Not under a session lock: there only the lock draws.
+    if shell.session_lock.is_none()
+        && let Some(backdrop) = startup_backdrop::element(renderer, output)
+    {
+        elements.extend(crop_to_output(backdrop.into()).map(Into::into));
+    }
 
     Ok(elements)
 }
