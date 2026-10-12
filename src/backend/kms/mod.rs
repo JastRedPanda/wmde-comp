@@ -85,6 +85,58 @@ pub struct KmsState {
     pub dmabuf_global: Option<DmabufGlobal>,
 }
 
+/// WMDE: on exit while another session holds the screen, let go of the framebuffers that
+/// are still being scanned out with `DRM_IOCTL_MODE_CLOSEFB` (Linux 6.8) instead of letting
+/// them be removed. Removal - what the fd closing at exit or smithay's drop does - takes the
+/// frame off the screen, and the session that just took over has not drawn its own yet: the
+/// greeter, ended by wmde-greetd right after the handover, blanked the screen for the few
+/// hundred milliseconds until the desktop's first frame. Closed instead, the frame stays up
+/// until whoever owns the screen now replaces it. Planes showing someone else's framebuffer
+/// are left alone: the kernel refuses to close what this fd does not own.
+pub fn close_scanout_framebuffers(kms: &KmsState) {
+    #[repr(C)]
+    struct DrmModeCloseFb {
+        fb_id: u32,
+        pad: u32,
+    }
+    // _IOWR('d', 0xD0, struct drm_mode_closefb)
+    const DRM_IOCTL_MODE_CLOSEFB: libc::c_ulong = 0xC008_64D0;
+
+    if kms.session.is_active() {
+        return;
+    }
+    for device in kms.drm_devices.values() {
+        let fd = device.drm.device().device_fd();
+        let Ok(planes) = fd.plane_handles() else {
+            continue;
+        };
+        for plane in planes {
+            let Some(fb) = fd.get_plane(plane).ok().and_then(|info| info.framebuffer()) else {
+                continue;
+            };
+            let mut arg = DrmModeCloseFb {
+                fb_id: u32::from(fb),
+                pad: 0,
+            };
+            // SAFETY: a valid DRM fd and a pointer to a struct of the layout the ioctl takes.
+            let ret = unsafe {
+                libc::ioctl(
+                    std::os::fd::AsRawFd::as_raw_fd(fd),
+                    DRM_IOCTL_MODE_CLOSEFB,
+                    &raw mut arg,
+                )
+            };
+            if ret != 0 {
+                debug!(
+                    err = ?std::io::Error::last_os_error(),
+                    ?plane,
+                    "Framebuffer left to the kernel"
+                );
+            }
+        }
+    }
+}
+
 pub struct KmsGuard<'a> {
     pub drm_devices: IndexMap<DrmNode, LockedDevice<'a>>,
     pub primary_node: Arc<RwLock<Option<DrmNode>>>,
