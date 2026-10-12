@@ -182,6 +182,8 @@ pub fn run(hooks: crate::hooks::Hooks) -> Result<(), Box<dyn Error>> {
 
     // init event loop
     let mut event_loop = EventLoop::try_new().with_context(|| "Failed to initialize event loop")?;
+    // WMDE: stop cleanly on SIGTERM/SIGINT, see `install_stop_signals`.
+    install_stop_signals(&event_loop.handle())?;
     // init wayland
     let (display, socket) = init_wayland_display(&mut event_loop)?;
     // init state
@@ -292,6 +294,66 @@ pub fn run(hooks: crate::hooks::Hooks) -> Result<(), Box<dyn Error>> {
         process::exit(code);
     }
 
+    Ok(())
+}
+
+/// WMDE: SIGTERM and SIGINT stop the event loop instead of killing the process, so the
+/// shutdown path runs: surface threads are joined and the scanned out framebuffers are
+/// closed rather than removed (`backend::kms::close_scanout_framebuffers`). Killed outright,
+/// the compositor took its last frame off the screen, which is how greetd ends the greeter
+/// after a handover - the desktop then started on a blank screen. A self-pipe carries the
+/// signal into the loop: the handler only writes one byte, which is async-signal-safe.
+fn install_stop_signals(
+    handle: &smithay::reexports::calloop::LoopHandle<'static, State>,
+) -> Result<()> {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    use std::sync::atomic::{AtomicI32, Ordering};
+
+    static STOP_FD: AtomicI32 = AtomicI32::new(-1);
+
+    extern "C" fn on_stop_signal(_: libc::c_int) {
+        let fd = STOP_FD.load(Ordering::Relaxed);
+        if fd >= 0 {
+            // SAFETY: write(2) is async-signal-safe; a full pipe only drops a repeat signal.
+            unsafe { libc::write(fd, [1u8].as_ptr().cast(), 1) };
+        }
+    }
+
+    let mut fds = [0 as libc::c_int; 2];
+    // SAFETY: `fds` has room for the two descriptors pipe2 writes.
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) } != 0 {
+        return Err(std::io::Error::last_os_error()).context("Failed to create the signal pipe");
+    }
+    // SAFETY: both descriptors were just created and are owned by nobody else.
+    let read = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    // The write end lives as long as the process, for the handler.
+    STOP_FD.store(fds[1], Ordering::Relaxed);
+
+    for signal in [libc::SIGTERM, libc::SIGINT] {
+        // SAFETY: a zeroed sigaction with a plain handler and an empty mask is valid.
+        unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = on_stop_signal as *const () as usize;
+            action.sa_flags = libc::SA_RESTART;
+            libc::sigemptyset(&raw mut action.sa_mask);
+            if libc::sigaction(signal, &raw const action, std::ptr::null_mut()) != 0 {
+                return Err(std::io::Error::last_os_error())
+                    .context("Failed to install the stop signal handler");
+            }
+        }
+    }
+
+    handle
+        .insert_source(
+            Generic::new(read, Interest::READ, Mode::Level),
+            |_, _, state| {
+                info!("Stop signal received");
+                state.common.should_stop = true;
+                Ok(PostAction::Remove)
+            },
+        )
+        .map_err(|err| err.error)
+        .context("Failed to watch the signal pipe")?;
     Ok(())
 }
 
