@@ -464,7 +464,11 @@ impl State {
         }
         // active drm, resume leases
         for device in backend.drm_devices.values_mut() {
-            if let Err(err) = device.drm.lock().activate(true) {
+            // WMDE: `false`, as at startup (`DrmDevice::new(fd, false)`): do not switch every
+            // connector off before the first frame. With `true` the screen went black between
+            // coming back from a console and the desktop's first frame; the per-output reset
+            // inside `activate` still makes that frame a full modeset.
+            if let Err(err) = device.drm.lock().activate(false) {
                 error!(?err, "Failed to resume drm device");
                 continue;
             }
