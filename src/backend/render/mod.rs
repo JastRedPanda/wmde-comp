@@ -856,6 +856,12 @@ where
         .find(|w| w.handle == current.0)
         .ok_or(OutputNoMode)?;
     let is_active_space = workspace.output == focused_output;
+    // WMDE: the panel's own test for going opaque (`maximized_outputs` in cosmic-panel): a
+    // maximized window, not minimized, on this output's active workspace or sticky.
+    let output_maximized = workspace
+        .mapped()
+        .chain(set.sticky_layer.mapped())
+        .any(|mapped| mapped.is_maximized(false));
     let active_hint = if shell.active_hint {
         theme.cosmic().active_hint as u8
     } else {
@@ -999,16 +1005,17 @@ where
                 // panel reports the rectangle it paints and its corners through the corner
                 // radius protocol (`padded`, `radii`), and the shader leaves that rectangle
                 // clear, so a see-through panel is not darkened from below.
-                if let Some(shadow) = shell.panel_shadows.get(layer.namespace())
-                    && shadow.enabled
-                    && shadow.opacity > 0.0
+                if let Some(alpha) = shell
+                    .panel_shadows
+                    .get(layer.namespace())
+                    .and_then(|shadow| shadow.alpha(output_maximized))
                 {
                     let element = ShadowShader::element(
                         renderer,
                         CosmicMappedKey::layer(layer.wl_surface()),
                         padded.as_local(),
                         radii,
-                        shadow.opacity,
+                        alpha,
                         scale,
                         theme.cosmic().is_dark,
                     );

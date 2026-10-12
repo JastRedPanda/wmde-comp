@@ -3,7 +3,9 @@
 //! WMDE: which panels drop a shadow. The panel draws nothing outside its own surface, so the
 //! shadow is ours, drawn like a window's. Whether a panel wants one is its own setting: the
 //! `shadow` key of `fun.wmde.Panel.<name>`, faded by the panel's `opacity` so a see-through
-//! panel casts a faint shadow. A panel's layer surface carries the panel name as its namespace,
+//! panel casts a faint shadow. While a window is maximized on its output the panel turns
+//! opaque unless `keep_style_on_maximize` is set (`CosmicPanelConfig::maximize`), and so does
+//! the shadow. A panel's layer surface carries the panel name as its namespace,
 //! which is how the renderer matches a surface to these settings (`Shell::panel_shadows`).
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -24,6 +26,24 @@ pub struct PanelShadow {
     pub enabled: bool,
     /// The panel's background opacity, 0.0 to 1.0; scales the shadow's alpha.
     pub opacity: f32,
+    /// The panel keeps its opacity while a window is maximized on its output.
+    pub keep_style_on_maximize: bool,
+}
+
+impl PanelShadow {
+    /// The shadow's alpha, or `None` for no shadow. `maximized` is whether a window is
+    /// maximized on the panel's output.
+    pub fn alpha(&self, maximized: bool) -> Option<f32> {
+        if !self.enabled {
+            return None;
+        }
+        let alpha = if maximized && !self.keep_style_on_maximize {
+            1.0
+        } else {
+            self.opacity
+        };
+        (alpha > 0.0).then_some(alpha)
+    }
 }
 
 fn panel_config(name: &str) -> Option<cosmic_config::Config> {
@@ -38,6 +58,9 @@ fn read(config: &cosmic_config::Config) -> PanelShadow {
     PanelShadow {
         enabled: config.get::<bool>("shadow").unwrap_or(true),
         opacity: config.get::<f32>("opacity").unwrap_or(1.0).clamp(0.0, 1.0),
+        keep_style_on_maximize: config
+            .get::<bool>("keep_style_on_maximize")
+            .unwrap_or(false),
     }
 }
 
@@ -105,7 +128,12 @@ pub fn watch<'l>(loop_handle: &LoopHandle<'l, State>) {
                 };
                 let panel = name.clone();
                 match loop_handle.insert_source(source, move |(config, keys), (), state| {
-                    if !keys.iter().any(|key| key == "shadow" || key == "opacity") {
+                    if !keys.iter().any(|key| {
+                        matches!(
+                            key.as_str(),
+                            "shadow" | "opacity" | "keep_style_on_maximize"
+                        )
+                    }) {
                         return;
                     }
                     let shadow = read(&config);
