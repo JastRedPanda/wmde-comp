@@ -5415,7 +5415,7 @@ fn render_new_tree_windows<R>(
 
         let radius = theme
             .radius_s()
-            .map(|x| if x < 4.0 { x } else { x + 4.0 })
+            .map(|x| if x < 4.0 { x } else { x + 2.0 })
             .map(|val| (val * scale.x.min(scale.y) as f32).round() as u8);
         swap_elements.push(CosmicMappedRenderElement::FocusIndicator(
             IndicatorShader::focus_element(
@@ -5495,7 +5495,7 @@ fn render_new_tree_windows<R>(
                         }
                         _ => theme
                             .radius_s()
-                            .map(|x| if x < 4.0 { x } else { x + 4.0 })
+                            .map(|x| if x < 4.0 { x } else { x + 2.0 })
                             .map(|val| (val * scale.x.min(scale.y) as f32).round() as u8),
                     };
 

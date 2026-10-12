@@ -434,7 +434,7 @@ impl CosmicWindow {
             let mut radii = theme
                 .cosmic()
                 .radius_s()
-                .map(|x| if x < 4.0 { x } else { x + 4.0 })
+                .map(|x| if x < 4.0 { x } else { x + 2.0 })
                 .map(|x| (x * scale as f32).round() as u8);
             if has_ssd && !clip {
                 // bottom corners
@@ -504,7 +504,7 @@ impl CosmicWindow {
                     .unwrap()
                     .cosmic()
                     .radius_s()
-                    .map(|x| if x < 4.0 { x } else { x + 4.0 })
+                    .map(|x| if x < 4.0 { x } else { x + 2.0 })
                     .map(|x| x.round() as u8),
                 *p.appearance_conf.lock().unwrap(),
             )
@@ -696,7 +696,7 @@ impl CosmicWindow {
                         .unwrap()
                         .cosmic()
                         .radius_s()
-                        .map(|x| if x < 4.0 { x } else { x + 4.0 })
+                        .map(|x| if x < 4.0 { x } else { x + 2.0 })
                         .map(|x| x.round() as u8)
                 }
             } else {
