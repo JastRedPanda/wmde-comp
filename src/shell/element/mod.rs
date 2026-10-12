@@ -141,6 +141,18 @@ pub struct CosmicMappedKey(CosmicMappedKeyInner);
 enum CosmicMappedKeyInner {
     Window(Weak<Mutex<IcedElementInternal<CosmicWindowInternal>>>),
     Stack(Weak<Mutex<IcedElementInternal<CosmicStackInternal>>>),
+    // WMDE: a panel's layer surface, for the shadow drawn under it.
+    Layer(smithay::reexports::wayland_server::Weak<WlSurface>),
+}
+
+impl CosmicMappedKey {
+    /// WMDE: a key for a surface that is not a mapped window, such as a panel, so it can
+    /// share the shadow cache with windows.
+    pub fn layer(surface: &WlSurface) -> Self {
+        CosmicMappedKey(CosmicMappedKeyInner::Layer(
+            smithay::reexports::wayland_server::Resource::downgrade(surface),
+        ))
+    }
 }
 
 impl Hash for CosmicMappedKey {
@@ -148,6 +160,7 @@ impl Hash for CosmicMappedKey {
         match &self.0 {
             CosmicMappedKeyInner::Window(weak) => weak.as_ptr().hash(state),
             CosmicMappedKeyInner::Stack(weak) => weak.as_ptr().hash(state),
+            CosmicMappedKeyInner::Layer(weak) => weak.hash(state),
         }
     }
 }
@@ -157,6 +170,7 @@ impl IsAlive for CosmicMappedKey {
         match &self.0 {
             CosmicMappedKeyInner::Window(weak) => weak.strong_count() > 0,
             CosmicMappedKeyInner::Stack(weak) => weak.strong_count() > 0,
+            CosmicMappedKeyInner::Layer(weak) => weak.is_alive(),
         }
     }
 }
@@ -169,6 +183,9 @@ impl PartialEq for CosmicMappedKey {
             }
             (CosmicMappedKeyInner::Stack(weak1), CosmicMappedKeyInner::Stack(weak2)) => {
                 Weak::ptr_eq(weak1, weak2)
+            }
+            (CosmicMappedKeyInner::Layer(weak1), CosmicMappedKeyInner::Layer(weak2)) => {
+                weak1 == weak2
             }
             _ => false,
         }

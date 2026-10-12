@@ -44,6 +44,7 @@ use tracing::{error, warn};
 
 mod input_config;
 pub mod key_bindings;
+pub mod panel_shadows;
 mod types;
 
 use cosmic::config::CosmicTk;
@@ -203,6 +204,8 @@ impl Config {
                 warn!(?err, "Failed to migrate cursor_hide_timeout to cursor_hide");
             }
         }
+
+        panel_shadows::watch(loop_handle);
 
         // Listen for updates to the toolkit config
         if let Ok(tk_config) = CosmicTk::config() {

@@ -294,6 +294,9 @@ pub struct Shell {
 
     theme: cosmic::Theme,
     pub active_hint: bool,
+    /// WMDE: shadow settings of each panel, by panel name - the namespace of its layer
+    /// surface. Kept up to date by `config::panel_shadows::watch`.
+    pub panel_shadows: HashMap<String, crate::config::panel_shadows::PanelShadow>,
     overview_mode: OverviewMode,
     swap_indicator: Option<SwapIndicator>,
     resize_mode: ResizeMode,
@@ -1759,6 +1762,7 @@ impl Shell {
 
             theme,
             active_hint: config.cosmic_conf.active_hint,
+            panel_shadows: HashMap::new(),
             overview_mode: OverviewMode::None,
             swap_indicator: None,
             resize_mode: ResizeMode::None,

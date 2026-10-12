@@ -29,7 +29,7 @@ use crate::{
     shell::{
         CosmicMappedRenderElement, OutputId, OverviewMode, SeatExt, Trigger, WorkspaceDelta,
         WorkspaceRenderElement,
-        element::CosmicMappedKey,
+        element::{CosmicMappedKey, window::CosmicWindowRenderElement},
         focus::{FocusTarget, Stage, render_input_order, target::WindowGroup},
         grabs::{MoveGrabPart, SeatMenuGrabState, SeatMoveGrabState},
         layout::tiling::ANIMATION_DURATION,
@@ -994,6 +994,29 @@ where
                     },
                     None,
                 );
+
+                // WMDE: a panel's shadow, pushed after the panel so it lands under it. The
+                // panel reports the rectangle it paints and its corners through the corner
+                // radius protocol (`padded`, `radii`), and the shader leaves that rectangle
+                // clear, so a see-through panel is not darkened from below.
+                if let Some(shadow) = shell.panel_shadows.get(layer.namespace())
+                    && shadow.enabled
+                    && shadow.opacity > 0.0
+                {
+                    let element = ShadowShader::element(
+                        renderer,
+                        CosmicMappedKey::layer(layer.wl_surface()),
+                        padded.as_local(),
+                        radii,
+                        shadow.opacity,
+                        scale,
+                        theme.cosmic().is_dark,
+                    );
+                    elements.extend(
+                        crop_to_output(CosmicWindowRenderElement::Shadow(element).into())
+                            .map(Into::into),
+                    );
+                }
             }
             Stage::OverrideRedirect { surface, location } => {
                 if let Some(wl_surface) = surface.wl_surface() {
