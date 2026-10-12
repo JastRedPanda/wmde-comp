@@ -85,14 +85,16 @@ pub struct KmsState {
     pub dmabuf_global: Option<DmabufGlobal>,
 }
 
-/// WMDE: on exit while another session holds the screen, let go of the framebuffers that
-/// are still being scanned out with `DRM_IOCTL_MODE_CLOSEFB` (Linux 6.8) instead of letting
-/// them be removed. Removal - what the fd closing at exit or smithay's drop does - takes the
-/// frame off the screen, and the session that just took over has not drawn its own yet: the
-/// greeter, ended by wmde-greetd right after the handover, blanked the screen for the few
-/// hundred milliseconds until the desktop's first frame. Closed instead, the frame stays up
-/// until whoever owns the screen now replaces it. Planes showing someone else's framebuffer
-/// are left alone: the kernel refuses to close what this fd does not own.
+/// WMDE: on exit, let go of the framebuffers that are still being scanned out with
+/// `DRM_IOCTL_MODE_CLOSEFB` (Linux 6.8) instead of letting them be removed. Removal - what
+/// the fd closing at exit or smithay's drop does - takes the frame off the screen while the
+/// next owner has not drawn its own yet: the greeter, ended by wmde-greetd right after the
+/// handover, blanked the screen for ~220 ms until the desktop's first frame. Closed instead,
+/// the frame stays up until whoever owns the screen next replaces it. Done on every clean
+/// exit, not only while paused: greetd's SIGTERM arrives ~70 ms after the VT switch, before
+/// the pause from logind has been dispatched, so the session still reads as active here.
+/// Planes showing someone else's framebuffer are left alone: the kernel refuses to close
+/// what this fd does not own.
 pub fn close_scanout_framebuffers(kms: &KmsState) {
     #[repr(C)]
     struct DrmModeCloseFb {
@@ -102,9 +104,6 @@ pub fn close_scanout_framebuffers(kms: &KmsState) {
     // _IOWR('d', 0xD0, struct drm_mode_closefb)
     const DRM_IOCTL_MODE_CLOSEFB: libc::c_ulong = 0xC008_64D0;
 
-    if kms.session.is_active() {
-        return;
-    }
     for device in kms.drm_devices.values() {
         let fd = device.drm.device().device_fd();
         let Ok(planes) = fd.plane_handles() else {

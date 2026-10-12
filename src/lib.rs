@@ -271,7 +271,7 @@ pub fn run(hooks: crate::hooks::Hooks) -> Result<(), Box<dyn Error>> {
     // because the event loop has stopped; an unconditional join in Surface::Drop
     // would instead deadlock against apply_config_for_outputs.
     if let BackendData::Kms(kms) = &mut state.backend {
-        // WMDE: keep the last frame up if the screen already belongs to another session.
+        // WMDE: leave the last frame up for whoever takes the screen next.
         crate::backend::kms::close_scanout_framebuffers(kms);
         // Release master first so the surface drop path skips its blocking commit.
         for device in kms.drm_devices.values_mut() {
