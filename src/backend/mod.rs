@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use crate::state::State;
+use crate::utils::prelude::*;
 use crate::wayland::protocols::a11y::A11yHandler;
 use anyhow::{Context, Result, anyhow};
 use cosmic_comp_config::NumlockState;
@@ -46,14 +47,17 @@ pub fn init_backend_auto(
     };
 
     if res.is_ok() {
-        let output = state
-            .common
-            .shell
-            .read()
-            .outputs()
-            .next()
-            .with_context(|| "Backend initialized without output")
-            .cloned()?;
+        // WMDE: start on the primary output where there is one (the xwayland primary, the
+        // only notion of a main display the stack has), not on whichever came first.
+        let output = {
+            let shell = state.common.shell.read();
+            shell
+                .outputs()
+                .find(|output| output.config().xwayland_primary)
+                .or_else(|| shell.outputs().next())
+                .with_context(|| "Backend initialized without output")
+                .cloned()?
+        };
         let initial_seat = crate::shell::create_seat(
             dh,
             &mut state.common.seat_state,
@@ -61,6 +65,15 @@ pub fn init_backend_auto(
             &state.common.config,
             "seat-0".into(),
         );
+
+        // WMDE: the pointer starts in the middle of that output, as on Windows. Left alone it
+        // sits at the global origin, over the top-left corner of the top panel.
+        if let Some(pointer) = initial_seat.get_pointer() {
+            let geometry = output.geometry().to_f64();
+            pointer.set_location(
+                (geometry.loc + geometry.size.downscale(2.0).to_point()).as_logical(),
+            );
+        }
 
         let keyboard = initial_seat
             .get_keyboard()
