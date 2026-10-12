@@ -114,6 +114,9 @@ pub fn init_backend(
     event_loop
         .handle()
         .insert_source(notifier, move |event, &mut (), state| match event {
+            // WMDE: until the backend is in place (see the wait below) there is nothing to
+            // pause or resume; the session tracks its own state.
+            _ if !matches!(state.backend, BackendData::Kms(_)) => {}
             SessionEvent::ActivateSession => {
                 state.resume_session(
                     dispatcher.clone(),
@@ -127,6 +130,18 @@ pub fn init_backend(
         })
         .map_err(|err| err.error)
         .context("Failed to initialize session event source")?;
+
+    // WMDE: a session started on a VT that is not in front - wmde-greetd's handover
+    // (`session_vt = next`) starts it beside the greeter and switches to it once the
+    // session has taken control - owns no display yet: DRM master is refused and no
+    // output can be set up, which used to end here with "Backend initialized without
+    // output". Wait for the switch instead. Taking control above is what tells greetd
+    // the session is ready, so the wait ends as soon as greetd sees it.
+    while !session.is_active() {
+        event_loop
+            .dispatch(Some(Duration::from_millis(100)), state)
+            .context("Failed to wait for the session to become active")?;
+    }
 
     // finish backend initialization
     state.backend = BackendData::Kms(KmsState {
